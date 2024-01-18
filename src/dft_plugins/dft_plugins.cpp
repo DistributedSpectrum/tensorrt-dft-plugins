@@ -167,10 +167,10 @@ class FftPluginBase: public IPluginV2DynamicExt {
 
         // Create cuFFT plan.
         auto [batch_size, dft_dims] = splitSignalDims();
-        // auto in_out_types = getInOutTypes();
+        auto in_out_types = getInOutTypes();
         err = cufftXtMakePlanMany(*handle_, signal_ndim_, dft_dims.data(),
-                                  /*inembed*/nullptr, 1, 0, CUDA_C_32F,
-                                  /*onembed*/nullptr, 1, 0, CUDA_C_32F,
+                                  /*inembed*/nullptr, 1, 0, std::get<0>(in_out_types),
+                                  /*onembed*/nullptr, 1, 0, std::get<1>(in_out_types),
                                   /*batch*/batch_size,
                                   /*workSize*/ws_size_.data(),
                                   /*executiontype*/CUDA_C_32F);
