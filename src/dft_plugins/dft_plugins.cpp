@@ -367,20 +367,46 @@ class FftPlugin: public FftPluginBase<CUFFT_FORWARD> {
         assert(nbInputs == 1);
 
         DimsExprs output(inputs[0]);
-        // RFFT output is complex, so add a dimension for complex number representation.
         assert(output.nbDims < Dims::MAX_DIMS);
-        // output.nbDims += 1;
-        // output.d[output.nbDims - 1] = exprBuilder.constant(2);
-        // Since it's real-to-complex DFT transform, it is Hermitian,
-        // so the last *signal* dim is halved.
-        // output.d[output.nbDims - 2] = exprBuilder.operation(
-        //     DimensionOperation::kSUM,
-        //     *exprBuilder.operation(
-        //         DimensionOperation::kFLOOR_DIV,
-        //         *output.d[output.nbDims - 2],
-        //         *exprBuilder.constant(2)),
-        //     *exprBuilder.constant(1));
         return output;
+    }
+
+    void configurePlugin(DynamicPluginTensorDesc const* in, int32_t nbInputs,
+                         DynamicPluginTensorDesc const* out, int32_t nbOutputs)
+                         noexcept override {
+        Base::configurePlugin(in, nbInputs, out, nbOutputs);
+        cublas_ = cublas_ptr(createCublasHandle());
+    }
+
+    int32_t enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc,
+                    void const* const* inputs, void* const* outputs,
+                    void* workspace, cudaStream_t stream) noexcept override {
+        int32_t err{0};
+        err = Base::enqueue(inputDesc, outputDesc, inputs, outputs,
+                            workspace, stream);
+        if (err != 0)
+            return err;
+
+        // TODO: implement normalization schemes
+        err = cublasSetStream(*cublas_, stream);
+        assert(err == CUBLAS_STATUS_SUCCESS);
+
+        // Scale the output to mimic ONNX Contrib IRFFT behavior
+        // aka "backward" normalization mode in PyTorch fft.
+        auto [batch_size, dft_dims] = splitSignalDims();
+        float total_dft_size = 1.0f;
+        for (int i = 0; i < signal_ndim_; i++)
+            total_dft_size *= dft_dims[i];
+
+        float scale = 1.0f / std::sqrt(total_dft_size);
+	    float2 complex_scale = make_float2(scale, 0.0f);
+        err = cublasScalEx(*cublas_, batch_size * total_dft_size,
+                           &complex_scale, CUDA_C_32F,
+                           outputs[0], CUDA_C_32F, 1,
+                           CUDA_C_32F);
+        assert(err == CUBLAS_STATUS_SUCCESS);
+
+        return 0;
     }
 
  public:
@@ -396,6 +422,9 @@ class FftPlugin: public FftPluginBase<CUFFT_FORWARD> {
     }
 
     Dims getSignalDims() const noexcept override { return in_desc_.desc.dims; }
+
+ private:
+    cublas_ptr cublas_;
 };
 
 
@@ -421,19 +450,7 @@ class IfftPlugin: public FftPluginBase<CUFFT_INVERSE> {
         assert(nbInputs == 1);
 
         DimsExprs output(inputs[0]);
-        // IRFFT input is complex, output is real, so remove the last dimension
-        // used for complex numbers representation.
         assert(output.nbDims > 1);
-        // output.nbDims -= 1;
-        // Since the input is one-sided, Hermitian signal, the real-valued
-        // output will have the last dimension of (N - 1) * 2.
-        // output.d[output.nbDims - 1] = exprBuilder.operation(
-        //     DimensionOperation::kPROD,
-        //     *exprBuilder.operation(
-        //         DimensionOperation::kSUB,
-        //         *output.d[output.nbDims - 1],
-        //         *exprBuilder.constant(1)),
-        //     *exprBuilder.constant(2));
         return output;
     }
 
@@ -454,7 +471,6 @@ class IfftPlugin: public FftPluginBase<CUFFT_INVERSE> {
             return err;
 
         // TODO: implement normalization schemes
-
         err = cublasSetStream(*cublas_, stream);
         assert(err == CUBLAS_STATUS_SUCCESS);
 
@@ -465,8 +481,8 @@ class IfftPlugin: public FftPluginBase<CUFFT_INVERSE> {
         for (int i = 0; i < signal_ndim_; i++)
             total_dft_size *= dft_dims[i];
 
-        float scale = 1.0f / total_dft_size;
-	float2 complex_scale = make_float2(scale, 0.0f);
+        float scale = 1.0f / std::sqrt(total_dft_size);
+	    float2 complex_scale = make_float2(scale, 0.0f);
         err = cublasScalEx(*cublas_, batch_size * total_dft_size,
                            &complex_scale, CUDA_C_32F,
                            outputs[0], CUDA_C_32F, 1,
