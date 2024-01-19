@@ -37,11 +37,15 @@
 // #include <vector>
 #include "dft_plugins.h"
 
-namespace trt_dft {
+
 
 using namespace nvinfer1;
+using nvinfer1::plugin::FftPluginBase;
 using nvinfer1::plugin::FftPlugin;
 using nvinfer1::plugin::IfftPlugin;
+
+using nvinfer1::plugin::FftPluginCreator;
+using nvinfer1::plugin::IfftPluginCreator;
 // using nvinfer1::plugin::
 
 static const char* DFT_PLUGIN_VERSION{"1"};
@@ -50,11 +54,12 @@ static const char* IFFT_PLUGIN_NAME{"Ifft"};
 
 // DFT plugins base class.
 //
-FftPluginBase::FftPluginBase(int direction, int32_t normalized, int32_t onesided, int32_t signal_ndim):
+FftPluginBase::FftPluginBase(int direction, int32_t normalized, int32_t onesided, int32_t signal_ndim): 
     direction_(direction),
     normalized_(normalized),
     onesided_(onesided),
-    signal_ndim_(signal_ndim) {
+    signal_ndim_(signal_ndim) 
+{
     // This mimics limitations of ONNX Contrib ops.
     assert(normalized == 0);
     assert(onesided == 1);
@@ -75,7 +80,7 @@ FftPluginBase::FftPluginBase(void const* data, size_t size) {
     assert(reinterpret_cast<char const*>(data) + size == p);
 }
 
-IPluginV2DynamicExt* FftPluginBase::clone() const {
+IPluginV2DynamicExt* FftPluginBase::clone() const noexcept {
     try {
         auto plugin = cloneImpl();
         plugin->setPluginNamespace(ns_.c_str());
@@ -87,11 +92,11 @@ IPluginV2DynamicExt* FftPluginBase::clone() const {
     return nullptr;
 }
 
-AsciiChar const* FftPluginBase::getPluginVersion() const {
-    return DFT_PLUGIN_VERSION.c_str();
+AsciiChar const* FftPluginBase::getPluginVersion() const noexcept {
+    return DFT_PLUGIN_VERSION;
 }
 
-int32_t FftPluginBase::getNbOutputs() const {
+int32_t FftPluginBase::getNbOutputs() const noexcept {
     return 1;
 }
 
@@ -182,10 +187,10 @@ void FftPluginBase::configurePlugin(DynamicPluginTensorDesc const* in, int32_t n
     assert(err == CUFFT_SUCCESS);
 }
 
-int32_t FftPluginBase::enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc,
+int32_t FftPluginBase::enqueue(int direction, PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc,
                 void const* const* inputs, void* const* outputs,
-                void* workspace, cudaStream_t stream) noexcept override {
-    static_assert(direction_ == CUFFT_FORWARD || direction_ == CUFFT_INVERSE);
+                void* workspace, cudaStream_t stream) noexcept {
+    assert(direction == CUFFT_FORWARD || direction == CUFFT_INVERSE);
 
     auto err = cufftSetStream(*handle_, stream);
     assert(err == CUFFT_SUCCESS);
@@ -197,7 +202,7 @@ int32_t FftPluginBase::enqueue(PluginTensorDesc const* inputDesc, PluginTensorDe
     err = cufftXtExec(*handle_,
                       const_cast<void*>(inputs[0]),
                       const_cast<void*>(outputs[0]),
-                      direction_);
+                      direction);
     assert(err == CUFFT_SUCCESS);
 
     return 0;
@@ -296,13 +301,13 @@ FftPlugin::FftPlugin(void const* data, size_t size):
     FftPluginBase(data, size) {
 }
 
-AsciiChar const* FftPlugin::getPluginType() const noexcept override {
+AsciiChar const* FftPlugin::getPluginType() const noexcept {
     return FFT_PLUGIN_NAME;
 }
 
 DimsExprs FftPlugin::getOutputDimensions(int32_t outputIndex,
                               DimsExprs const* inputs, int32_t nbInputs,
-                              IExprBuilder& exprBuilder) noexcept override {
+                              IExprBuilder& exprBuilder) noexcept {
     assert(outputIndex == 0);
     assert(nbInputs == 1);
 
@@ -312,6 +317,17 @@ DimsExprs FftPlugin::getOutputDimensions(int32_t outputIndex,
     return output;
 }
 
+int32_t FftPlugin::enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc,
+                void const* const* inputs, void* const* outputs,
+                void* workspace, cudaStream_t stream) noexcept {
+    int32_t err{0};
+    err = FftPluginBase::enqueue(CUFFT_FORWARD, inputDesc, outputDesc, inputs, outputs,
+                        workspace, stream);
+    if (err != 0)
+        return err;
+
+    return 0;
+}
 FftPluginBase* FftPlugin::cloneImpl() const {
     return new FftPlugin(normalized_, onesided_, signal_ndim_);
 }
@@ -320,7 +336,7 @@ std::pair<cudaDataType, cudaDataType> FftPlugin::getInOutTypes() const {
     return {CUDA_C_32F, CUDA_C_32F};
 }
 
-Dims FftPlugin::getSignalDims() const { return in_desc_.desc.dims; }
+Dims FftPlugin::getSignalDims() const noexcept { return in_desc_.desc.dims; }
 
 
 IfftPlugin::IfftPlugin(int32_t normalized, int32_t onesided, int32_t signal_ndim):
@@ -328,17 +344,17 @@ IfftPlugin::IfftPlugin(int32_t normalized, int32_t onesided, int32_t signal_ndim
 }
 
     // Deserialization ctor.
-IfftPlugin:IfftPlugin(void const* data, size_t size):
+IfftPlugin::IfftPlugin(void const* data, size_t size):
     FftPluginBase(data, size) {
 }
 
-AsciiChar const* IfftPlugin::getPluginType() const {
+AsciiChar const* IfftPlugin::getPluginType() const noexcept {
     return IFFT_PLUGIN_NAME;
 }
 
 DimsExprs IfftPlugin::getOutputDimensions(int32_t outputIndex,
                               DimsExprs const* inputs, int32_t nbInputs,
-                              IExprBuilder& exprBuilder) noexcept override {
+                              IExprBuilder& exprBuilder) noexcept {
     assert(outputIndex == 0);
     assert(nbInputs == 1);
 
@@ -361,16 +377,16 @@ DimsExprs IfftPlugin::getOutputDimensions(int32_t outputIndex,
 
 void IfftPlugin::configurePlugin(DynamicPluginTensorDesc const* in, int32_t nbInputs,
                      DynamicPluginTensorDesc const* out, int32_t nbOutputs)
-                     noexcept override {
-    Base::configurePlugin(in, nbInputs, out, nbOutputs);
+                     noexcept {
+    FftPluginBase::configurePlugin(in, nbInputs, out, nbOutputs);
     cublas_ = cublas_ptr(createCublasHandle());
 }
 
 int32_t IfftPlugin::enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc,
                 void const* const* inputs, void* const* outputs,
-                void* workspace, cudaStream_t stream) {
+                void* workspace, cudaStream_t stream) noexcept {
     int32_t err{0};
-    err = Base::enqueue(inputDesc, outputDesc, inputs, outputs,
+    err = FftPluginBase::enqueue(CUFFT_INVERSE, inputDesc, outputDesc, inputs, outputs,
                         workspace, stream);
     if (err != 0)
         return err;
@@ -388,7 +404,7 @@ int32_t IfftPlugin::enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc 
         total_dft_size *= dft_dims[i];
 
     float scale = 1.0f / total_dft_size;
-    float complex_scale = make_float2(scale, 0.0f);
+    float2 complex_scale = make_float2(scale, 0.0f);
     err = cublasScalEx(*cublas_, batch_size * total_dft_size,
                        &complex_scale, CUDA_C_32F,
                        outputs[0], CUDA_C_32F, 1,
@@ -398,17 +414,15 @@ int32_t IfftPlugin::enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc 
     return 0;
 }
 
-// using Base = FftPluginBase<CUFFT_INVERSE>;
-
-FftPluginBase* cloneImpl() const {
+FftPluginBase* IfftPlugin::cloneImpl() const {
     return new IfftPlugin(normalized_, onesided_, signal_ndim_);
 }
 
-std::pair<cudaDataType, cudaDataType> getInOutTypes() const {
+std::pair<cudaDataType, cudaDataType> IfftPlugin::getInOutTypes() const {
     return {CUDA_C_32F, CUDA_C_32F};
 }
 
-Dims getSignalDims() const { return out_desc_.desc.dims; }
+Dims IfftPlugin::getSignalDims() const { return out_desc_.desc.dims; }
 
 
 // Plugin creators.
@@ -424,19 +438,19 @@ FftPluginCreator::FftPluginCreator() {
     field_names_.fields = attrs_.data();
 }
 
-AsciiChar const* FftPluginCreator::getPluginName() const {
+AsciiChar const* FftPluginCreator::getPluginName() const noexcept{
     return FFT_PLUGIN_NAME;
 }
 
-AsciiChar const* FftPluginCreator::getPluginVersion() const {
-    return DFT_PLUGIN_VERSION.c_str();
+AsciiChar const* FftPluginCreator::getPluginVersion() const noexcept{
+    return DFT_PLUGIN_VERSION;
 }
 
-PluginFieldCollection const* FftPluginCreator::getFieldNames() {
+PluginFieldCollection const* FftPluginCreator::getFieldNames() noexcept{
     return &field_names_;
 }
 
-IPluginV2* FftPluginCreator::createPlugin(AsciiChar const* name, PluginFieldCollection const* fc) {
+IPluginV2DynamicExt* FftPluginCreator::createPlugin(AsciiChar const* name, PluginFieldCollection const* fc) noexcept{
     try {
         const PluginField* fields = fc->fields;
         assert(fc->nbFields == 3);
@@ -459,7 +473,7 @@ IPluginV2* FftPluginCreator::createPlugin(AsciiChar const* name, PluginFieldColl
     return nullptr;
 }
 
-IPluginV2* FftPluginCreator::deserializePlugin(AsciiChar const* name, void const* serialData, size_t serialLength) {
+IPluginV2DynamicExt* FftPluginCreator::deserializePlugin(AsciiChar const* name, void const* serialData, size_t serialLength) noexcept{
     try {
         return new FftPlugin(serialData, serialLength);
     }
@@ -470,11 +484,11 @@ IPluginV2* FftPluginCreator::deserializePlugin(AsciiChar const* name, void const
     return nullptr;
 }
 
-void FftPluginCreator::setPluginNamespace(AsciiChar const* pluginNamespace) {
+void FftPluginCreator::setPluginNamespace(AsciiChar const* pluginNamespace) noexcept{
     ns_ = pluginNamespace;
 }
 
-AsciiChar const* FftPluginCreator::getPluginNamespace() const {
+AsciiChar const* FftPluginCreator::getPluginNamespace() const noexcept{
     return ns_.c_str();
 }
 
@@ -489,19 +503,19 @@ IfftPluginCreator::IfftPluginCreator() {
     field_names_.fields = attrs_.data();
 }
 
-AsciiChar const* IfftPluginCreator::getPluginName() const {
+AsciiChar const* IfftPluginCreator::getPluginName() const noexcept{
     return IFFT_PLUGIN_NAME;
 }
 
-AsciiChar const* IfftPluginCreator::getPluginVersion() const {
-    return DFT_PLUGIN_VERSION.c_str();
+AsciiChar const* IfftPluginCreator::getPluginVersion() const noexcept{
+    return DFT_PLUGIN_VERSION;
 }
 
-PluginFieldCollection const* IfftPluginCreator::getFieldNames() {
+PluginFieldCollection const* IfftPluginCreator::getFieldNames() noexcept{
     return &field_names_;
 }
 
-IPluginV2* IfftPluginCreator::createPlugin(AsciiChar const* name, PluginFieldCollection const* fc) {
+IPluginV2DynamicExt* IfftPluginCreator::createPlugin(AsciiChar const* name, PluginFieldCollection const* fc) noexcept{
     try {
         const PluginField* fields = fc->fields;
         assert(fc->nbFields == 3);
@@ -524,7 +538,7 @@ IPluginV2* IfftPluginCreator::createPlugin(AsciiChar const* name, PluginFieldCol
     return nullptr;
 }
 
-IPluginV2* IfftPluginCreator::deserializePlugin(AsciiChar const* name, void const* serialData, size_t serialLength) {
+IPluginV2DynamicExt* IfftPluginCreator::deserializePlugin(AsciiChar const* name, void const* serialData, size_t serialLength) noexcept{
     try {
         return new IfftPlugin(serialData, serialLength);
     }
@@ -535,12 +549,12 @@ IPluginV2* IfftPluginCreator::deserializePlugin(AsciiChar const* name, void cons
     return nullptr;
 }
 
-void IfftPluginCreator::setPluginNamespace(AsciiChar const* pluginNamespace) {
+void IfftPluginCreator::setPluginNamespace(AsciiChar const* pluginNamespace) noexcept{
     ns_ = pluginNamespace;
 }
 
-AsciiChar const* IfftPluginCreator::getPluginNamespace() const {
+AsciiChar const* IfftPluginCreator::getPluginNamespace() const noexcept{
     return ns_.c_str();
 }
 
- // namespace trt_dft
+

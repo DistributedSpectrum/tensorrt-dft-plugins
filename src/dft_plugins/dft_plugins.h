@@ -51,35 +51,35 @@ namespace nvinfer1 {
         // Deserialization ctor.
         FftPluginBase(void const* data, size_t size);
 
-        IPluginV2DynamicExt* clone() const override;
+        IPluginV2DynamicExt* clone() const noexcept override;
 
-        AsciiChar const* getPluginVersion() const override;
+        AsciiChar const* getPluginVersion() const noexcept override;
 
-        int32_t getNbOutputs() const override;
+        int32_t getNbOutputs() const noexcept override;
 
-        bool supportsFormatCombination(int32_t pos, PluginTensorDesc const* inOut, int32_t nbInputs, int32_t nbOutputs) override;
+        bool supportsFormatCombination(int32_t pos, PluginTensorDesc const* inOut, int32_t nbInputs, int32_t nbOutputs) noexcept override;
 
-        int32_t initialize() override;
+        int32_t initialize() noexcept override;
 
-        void terminate() override;
+        void terminate() noexcept override;
 
-        size_t getWorkspaceSize(PluginTensorDesc const* inputs, int32_t nbInputs, PluginTensorDesc const* outputs, int32_t nbOutputs) const override;
+        size_t getWorkspaceSize(PluginTensorDesc const* inputs, int32_t nbInputs, PluginTensorDesc const* outputs, int32_t nbOutputs) const noexcept override;
 
-        void configurePlugin(DynamicPluginTensorDesc const* in, int32_t nbInputs, DynamicPluginTensorDesc const* out, int32_t nbOutputs) override;
+        void configurePlugin(DynamicPluginTensorDesc const* in, int32_t nbInputs, DynamicPluginTensorDesc const* out, int32_t nbOutputs) noexcept override;
 
-        int32_t enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc, void const* const* inputs, void* const* outputs, void* workspace, cudaStream_t stream) override ;
+        int32_t enqueue(int direction, PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc, void const* const* inputs, void* const* outputs, void* workspace, cudaStream_t stream) noexcept;
 
-        size_t getSerializationSize() const override ;
+        size_t getSerializationSize() const noexcept override ;
 
-        void serialize(void* buffer) const override ;
+        void serialize(void* buffer) const noexcept override ;
 
-        void destroy() override ;
+        void destroy() noexcept override ;
 
-        void setPluginNamespace(AsciiChar const* pluginNamespace) override ;
+        void setPluginNamespace(AsciiChar const* pluginNamespace) noexcept override ;
 
-        AsciiChar const* getPluginNamespace() const override ;
+        AsciiChar const* getPluginNamespace() const noexcept override ;
 
-        DataType getOutputDataType(int32_t index, DataType const* inputTypes, int32_t nbInputs) const override;
+        DataType getOutputDataType(int32_t index, DataType const* inputTypes, int32_t nbInputs) const noexcept override;
 
      protected:
         virtual FftPluginBase* cloneImpl() const = 0;
@@ -166,55 +166,42 @@ namespace nvinfer1 {
         // Deserialization ctor.
         FftPlugin(void const* data, size_t size);
 
-        AsciiChar const* getPluginType() const override ;
+        AsciiChar const* getPluginType() const noexcept override;
 
-        DimsExprs getOutputDimensions(int32_t outputIndex,
-                                      DimsExprs const* inputs, int32_t nbInputs,
-                                      IExprBuilder& exprBuilder) override ;
+        DimsExprs getOutputDimensions(int32_t outputIndex, DimsExprs const* inputs, int32_t nbInputs, IExprBuilder& exprBuilder) noexcept override;
 
-     public:
-        static constexpr char name[]{"Rfft"};
-
+         int32_t enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc, void const* const* inputs, void* const* outputs, void* workspace, cudaStream_t stream) noexcept override;
+         
      protected:
         FftPluginBase* cloneImpl() const override ;
         std::pair<cudaDataType, cudaDataType> getInOutTypes() const override ;
 
-        Dims getSignalDims() const override { return in_desc_.desc.dims; }
+        Dims getSignalDims() const noexcept override;
     };
 
 
-    class IfftPlugin: public FftPluginBase<CUFFT_INVERSE> {
+    class IfftPlugin: public FftPluginBase{
      public:
         IfftPlugin(int32_t normalized, int32_t onesided, int32_t signal_ndim);
 
         // Deserialization ctor.
         IfftPlugin(void const* data, size_t size);
 
-        AsciiChar const* getPluginType() const noexcept override ;
+        AsciiChar const* getPluginType() const noexcept override;
 
-        DimsExprs getOutputDimensions(int32_t outputIndex,
-                                      DimsExprs const* inputs, int32_t nbInputs,
-                                      IExprBuilder& exprBuilder) noexcept override;
+        DimsExprs getOutputDimensions(int32_t outputIndex, DimsExprs const* inputs, int32_t nbInputs, IExprBuilder& exprBuilder) noexcept override;
 
-        void configurePlugin(DynamicPluginTensorDesc const* in, int32_t nbInputs,
-                             DynamicPluginTensorDesc const* out, int32_t nbOutputs)
-                             noexcept override;
+        void configurePlugin(DynamicPluginTensorDesc const* in, int32_t nbInputs, DynamicPluginTensorDesc const* out, int32_t nbOutputs) noexcept override;
 
-        int32_t enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc,
-                        void const* const* inputs, void* const* outputs,
-                        void* workspace, cudaStream_t stream) noexcept override ;
-
-     public:
-        static constexpr char name[]{"Irfft"};
+        int32_t enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc const* outputDesc, void const* const* inputs, void* const* outputs, void* workspace, cudaStream_t stream) noexcept override;
 
      protected:
-        using Base = FftPluginBase<CUFFT_INVERSE>;
 
-        FftPluginBase* cloneImpl() const noexcept override;
+        FftPluginBase* cloneImpl() const override;
 
-        std::pair<cudaDataType, cudaDataType> getInOutTypes() const noexcept override;
+        std::pair<cudaDataType, cudaDataType> getInOutTypes() const override;
 
-        Dims getSignalDims() const noexcept override { return out_desc_.desc.dims; }
+        Dims getSignalDims() const override;
 
      private:
         cublas_ptr cublas_;
@@ -233,12 +220,11 @@ namespace nvinfer1 {
 
         PluginFieldCollection const* getFieldNames() noexcept override;
 
-        IPluginV2* createPlugin(AsciiChar const* name, PluginFieldCollection const* fc)
-                                noexcept override;
+        IPluginV2DynamicExt* createPlugin(AsciiChar const* name, PluginFieldCollection const* fc) noexcept override;
 
-        IPluginV2* deserializePlugin(AsciiChar const* name,
+        IPluginV2DynamicExt* deserializePlugin(AsciiChar const* name,
                                      void const* serialData,
-                                     size_t serialLength) noexcept;
+                                     size_t serialLength) noexcept ;
 
         void setPluginNamespace(AsciiChar const* pluginNamespace) noexcept override;
 
@@ -254,21 +240,21 @@ namespace nvinfer1 {
      public:
         IfftPluginCreator();
 
-        AsciiChar const* getPluginName() const override;
+        AsciiChar const* getPluginName() const noexcept override;
 
-        AsciiChar const* getPluginVersion() const override;
+        AsciiChar const* getPluginVersion() const noexcept override;
 
-        PluginFieldCollection const* getFieldNames() override;
+        PluginFieldCollection const* getFieldNames() noexcept override;
 
-        IPluginV2* createPlugin(AsciiChar const* name, PluginFieldCollection const* fc) override;
+        IPluginV2DynamicExt* createPlugin(AsciiChar const* name, PluginFieldCollection const* fc) noexcept override;
 
-        IPluginV2* deserializePlugin(AsciiChar const* name,
+        IPluginV2DynamicExt* deserializePlugin(AsciiChar const* name,
                                      void const* serialData,
-                                     size_t serialLength);
+                                     size_t serialLength) noexcept;
 
-        void setPluginNamespace(AsciiChar const* pluginNamespace) override;
+        void setPluginNamespace(AsciiChar const* pluginNamespace) noexcept override;
 
-        AsciiChar const* getPluginNamespace() const override;
+        AsciiChar const* getPluginNamespace() const noexcept override;
 
      private:
         std::vector<PluginField> attrs_;
@@ -276,7 +262,7 @@ namespace nvinfer1 {
         std::string ns_;
     };
 
-    }
+   }
     
 
 }
