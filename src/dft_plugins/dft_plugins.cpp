@@ -176,7 +176,10 @@ void FftPluginBase::configurePlugin(DynamicPluginTensorDesc const* in, int32_t n
     assert(err == CUFFT_SUCCESS);
 
     // Create cuFFT plan.
-    auto [batch_size, dft_dims] = splitSignalDims();
+    //auto [batch_size, dft_dims] = splitSignalDims();
+    auto result = splitSignalDims();
+    auto batch_size = std::get<0>(result);
+    auto dft_dims = std::get<1>(result);
     auto in_out_types = getInOutTypes();
     err = cufftXtMakePlanMany(*handle_, signal_ndim_, dft_dims.data(),
                               /*inembed*/nullptr, 1, 0, std::get<0>(in_out_types),
@@ -398,7 +401,10 @@ int32_t IfftPlugin::enqueue(PluginTensorDesc const* inputDesc, PluginTensorDesc 
 
     // Scale the output to mimic ONNX Contrib IRFFT behavior
     // aka "backward" normalization mode in PyTorch fft.
-    auto [batch_size, dft_dims] = splitSignalDims();
+    //auto [batch_size, dft_dims] = splitSignalDims();
+    auto result = splitSignalDims();
+    auto batch_size = std::get<0>(result);
+    auto dft_dims = std::get<1>(result);
     float total_dft_size = 1.0f;
     for (int i = 0; i < signal_ndim_; i++)
         total_dft_size *= dft_dims[i];
